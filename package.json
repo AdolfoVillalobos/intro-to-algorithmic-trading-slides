@@ -10,16 +10,17 @@
   "scripts": {
     "test": "gulp test",
     "start": "gulp serve",
-    "build": "gulp build"
+    "build": "gulp build",
+    "vercel-build": "gulp build"
   },
   "author": {
-    "name": "Hakim El Hattab",
-    "email": "hakim.elhattab@gmail.com",
-    "web": "https://hakim.se"
+    "name": "Adolfo Villalobos",
+    "email": "adolfo@villalobos.dev",
+    "web": "https://adolfovillalobos.com"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/hakimel/reveal.js.git"
+    "url": "git://github.com/AdolfoVillalobos/intro-to-algorithmic-trading-slides.git"
   },
   "engines": {
     "node": ">=18.0.0"
