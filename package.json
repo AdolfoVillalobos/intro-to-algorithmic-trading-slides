@@ -11,7 +11,7 @@
     "test": "gulp test",
     "start": "gulp serve",
     "build": "gulp build",
-    "vercel-build": "gulp build"
+    "vercel-build": "npm install && gulp build"
   },
   "author": {
     "name": "Adolfo Villalobos",
