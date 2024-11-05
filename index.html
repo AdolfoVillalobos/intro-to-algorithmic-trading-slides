@@ -155,9 +155,9 @@
 					</div>
 				</section>
 
-				<section id="fragments">
-					<h2>Algorithm</h2>
-					<pre class="fragment"><code>while true:
+				<section id="algorithm">
+					<h2>Pseudo-code</h2>
+					<pre class="fragment"><code data-line-numbers="1-12|15-18|19-25" class="hljs" data-trim>while true:
     // Sample prices from Kraken
     btc_price_kraken = get_btc_price("kraken.com")
     
@@ -206,8 +206,155 @@
 				<section data-background="https://adolfovillalobos.imgix.net/blog/Flow2 Liquidity Mirroring Strategy BTC USDT.png"></section>
 				</section>
 
+
 				<section>
-					<h2>Thanks! Connect with me</h2>
+					<h3>Design</h3>
+					<p class="fragment">Repo</p>
+				</section>
+
+				<section>
+					<div style="display: flex; justify-content: space-between; align-items: center;">
+						<div style="flex: 1;">
+							<img src="https://adolfovillalobos.imgix.net/blog/algo-trading-repo-structure.png" alt="Flow 1" style="width: 100%; object-fit: contain; background: transparent;" class="demo-logo">
+						</div>
+						<div style="flex: 1; padding-left: 1rem; max-width: 80%; font-size: 0.7em;">
+							<ul style="margin: 0; padding: 0 0 0 1.5em;">
+								<li class="fragment">Microservices (mono-repo)</li>
+								<li class="fragment"><a>price-watch</a>: price events</li>
+								<li class="fragment"><a>trade-watch</a>: trade events</li>
+								<li class="fragment"><a>place-orders</a>: execute limit/market orders</li>
+								<li class="fragment"><a>bot-operator</a>: implement strategy</li>
+								<li class="fragment"><a>.github/workflows</a>: CI/CD, testing, etc.</li>
+								<li class="fragment"><a>docker-compose.dev.yml</a>: containerize</li>
+								<li class="fragment"><a>Makefile</a>: useful commands</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+
+				<section>
+					<h3>Code</h3>
+					<p class="fragment">Price Watch</p>
+				</section>
+
+				<section>
+					<h2>Price Watch</h2>
+					<p>Price source - Strategy design pattern</p>
+
+					<pre><code data-line-numbers="1-2|4-6|8-14|19-25|26-28|29-32" class="hljs" data-trim style="font-size: 0.7em;">
+					class PriceSource(BaseModel, ABC):
+						"""Abstract base class for different price data sources"""
+					
+						@abstractmethod
+						async def watch_prices(self, symbol: str) -> AsyncIterator[PriceMessage]:
+							pass
+
+					import ccxt.pro as ccxt
+
+					class CCXTPriceSource(PriceSource):
+						"""Generate prices from a CCXT client"""
+					
+						exchange: ccxt.Exchange
+						exchange_name: str
+					
+						class Config:
+							arbitrary_types_allowed = True
+					
+						async def watch_prices(self, symbol: str) -> AsyncIterator[PriceMessage]:
+							last_message = None
+							while True:
+								try:
+									// Get the orderbook from the exchange
+									orderbook = await self.exchange.watch_order_book(symbol)
+
+									// Convert into a PriceMessage
+									new_message = PriceMessage.from_orderbook(orderbook, self.exchange_name)
+					
+									// Yield the new price if it has changeds
+									if last_message is None or last_message.has_changed(new_message):
+										last_message = new_message
+										yield new_message
+								except Exception as e:
+									logger.error(f"Error watching {symbol}: {e}")
+								finally:
+									await asyncio.sleep(2)
+	</code></pre>
+				</section>
+
+				<section>
+					<h2>Price Watch</h2>
+					<p>RabbitMQ Message queue - Pub/Sub pattern</p>
+					<pre><code data-line-numbers="1-5|10-12|14-22|25-28|30-32" class="hljs" data-trim style="font-size: 0.7em;">
+						import aio_pika
+
+						class MessageQueuePublisher(BaseModel):
+							channel: Optional[aio_pika.Channel] = None
+							connection: Optional[aio_pika.Connection] = None
+					
+							class Config:
+								arbitrary_types_allowed = True
+						
+							async def connect(self, rabbitmq_url: str):
+								self.connection = await aio_pika.connect_robust(rabbitmq_url)
+								self.channel = await self.connection.channel()
+						
+							async def publish(self, message: PriceMessage):
+
+								if self.channel is None:
+									self.channel = await self.connection.channel()
+
+								logger.info("Publishing price message to %s: %s", message.subject(), message)
+
+								// Convert out price into a RabbitMQ message
+								amqp_message = aio_pika.Message(body=message.model_dump_json().encode())
+
+								// Publish the message to the Price subject
+								await self.channel.default_exchange.publish(
+									amqp_message,
+									routing_key=message.subject(), // i.e price_updates_kraken
+								)
+					
+							async def close(self):
+								if self.connection:
+									await self.connection.close()
+				</code></pre>
+				</section>
+
+				<section>
+					<h2>Price Watch</h2>
+					<p>Main loop</p>
+					<pre><code data-line-numbers="1-7|9-10|12-14|16-18" class="hljs" data-trim style="font-size: 0.9em;">
+
+						async def price_service(
+							price_source: PriceSource,
+							publisher: MessageQueuePublisher,
+							symbol: str,
+							rabbitmq_url: str,
+						) -> None:
+
+							try:
+								// Connect to RabbitMQ
+								await publisher.connect(rabbitmq_url)
+
+								// Watch prices from the price source
+								async for price_message in price_source.watch_prices(symbol):
+									await publisher.publish(price_message)
+
+							finally:
+								// Close the connection
+								await publisher.close()
+
+					</code></pre>
+				</section>
+
+
+				<section>
+					<h3>Code</h3>
+					<p class="fragment">Bot operator</p>
+				</section>
+
+				<section>
+					<h2>Thanks! The END</h2>
 					<div style="display: flex; justify-content: center; gap: 8rem;">
 						<div style="text-align: center;">
 							<img src="https://adolfovillalobos.imgix.net/blog/QR%20Linkedin.png" alt="LinkedIn QR code" style="height: 180px; background: transparent;" class="demo-logo">
@@ -220,212 +367,6 @@
 					</div>
 				</section>
 
-				<section>
-					<h2>Slides</h2>
-					<p>
-						Not a coder? Not a problem. There's a fully-featured visual editor for authoring these, try it out at <a href="https://slides.com" target="_blank">https://slides.com</a>.
-					</p>
-				</section>
-
-				<section data-visibility="hidden">
-					<h2>Hidden Slides</h2>
-					<p>
-						This slide is visible in the source, but hidden when the presentation is viewed. You can show all hidden slides by setting the `showHiddenSlides` config option to `true`.
-					</p>
-				</section>
-
-
-
-
-
-
-
-
-				<section>
-					<section data-background="#dddddd">
-						<h2>Slide Backgrounds</h2>
-						<p>
-							Set <code>data-background="#dddddd"</code> on a slide to change the background color. All CSS color formats are supported.
-						</p>
-						<a href="#" class="navigate-down">
-							<img class="r-frame" style="background: rgba(255,255,255,0.1);" width="178" height="238" data-src="https://static.slid.es/reveal/arrow.png" alt="Down arrow">
-						</a>
-					</section>
-					<section data-background-gradient="linear-gradient(to bottom, #283b95, #17b2c3)">
-						<h2>Gradient Backgrounds</h2>
-						<pre><code class="hljs html wrap">&lt;section data-background-gradient=
-							"linear-gradient(to bottom, #ddd, #191919)"&gt;</code></pre>
-					</section>
-					<section data-background="https://static.slid.es/reveal/image-placeholder.png">
-						<h2>Image Backgrounds</h2>
-						<pre><code class="hljs html">&lt;section data-background="image.png"&gt;</code></pre>
-					</section>
-					<section data-background="https://static.slid.es/reveal/image-placeholder.png" data-background-repeat="repeat" data-background-size="100px">
-						<h2>Tiled Backgrounds</h2>
-						<pre><code class="hljs html" style="word-wrap: break-word;">&lt;section data-background="image.png" data-background-repeat="repeat" data-background-size="100px"&gt;</code></pre>
-					</section>
-					<section data-background-video="https://static.slid.es/site/homepage/v1/homepage-video-editor.mp4" data-background-color="#000000">
-						<div style="background-color: rgba(0, 0, 0, 0.9); color: #fff; padding: 20px;">
-							<h2>Video Backgrounds</h2>
-							<pre><code class="hljs html" style="word-wrap: break-word;">&lt;section data-background-video="video.mp4,video.webm"&gt;</code></pre>
-						</div>
-					</section>
-					<section data-background="http://i.giphy.com/90F8aUepslB84.gif">
-						<h2>... and GIFs!</h2>
-					</section>
-				</section>
-
-				<section data-transition="slide" data-background="#4d7e65" data-background-transition="zoom">
-					<h2>Background Transitions</h2>
-					<p>
-						Different background transitions are available via the backgroundTransition option. This one's called "zoom".
-					</p>
-					<pre><code class="hljs javascript">Reveal.configure({ backgroundTransition: 'zoom' })</code></pre>
-				</section>
-
-				<section data-transition="slide" data-background="#b5533c" data-background-transition="zoom">
-					<h2>Background Transitions</h2>
-					<p>
-						You can override background transitions per-slide.
-					</p>
-					<pre><code class="hljs html" style="word-wrap: break-word;">&lt;section data-background-transition="zoom"&gt;</code></pre>
-				</section>
-
-				<section data-background-iframe="https://www.orionx.com" data-background-interactive>
-					<div style="position: absolute; width: 40%; right: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.5), 0 5px 25px rgba(0,0,0,0.2); background-color: rgba(0, 0, 0, 0.9); color: #fff; padding: 20px; font-size: 20px; text-align: left;">
-					</div>
-				</section>
-
-				<section>
-					<h2>Marvelous List</h2>
-					<ul>
-						<li>No order here</li>
-						<li>Or here</li>
-						<li>Or here</li>
-						<li>Or here</li>
-					</ul>
-				</section>
-
-				<section>
-					<h2>Fantastic Ordered List</h2>
-					<ol>
-						<li>One is smaller than...</li>
-						<li>Two is smaller than...</li>
-						<li>Three!</li>
-					</ol>
-				</section>
-
-				<section>
-					<h2>Tabular Tables</h2>
-					<table>
-						<thead>
-							<tr>
-								<th>Item</th>
-								<th>Value</th>
-								<th>Quantity</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr>
-								<td>Apples</td>
-								<td>$1</td>
-								<td>7</td>
-							</tr>
-							<tr>
-								<td>Lemonade</td>
-								<td>$2</td>
-								<td>18</td>
-							</tr>
-							<tr>
-								<td>Bread</td>
-								<td>$3</td>
-								<td>2</td>
-							</tr>
-						</tbody>
-					</table>
-				</section>
-
-				<section>
-					<h2>Clever Quotes</h2>
-					<p>
-						These guys come in two forms, inline: <q cite="http://searchservervirtualization.techtarget.com/definition/Our-Favorite-Technology-Quotations">The nice thing about standards is that there are so many to choose from</q> and block:
-					</p>
-					<blockquote cite="http://searchservervirtualization.techtarget.com/definition/Our-Favorite-Technology-Quotations">
-						&ldquo;For years there has been a theory that millions of monkeys typing at random on millions of typewriters would
-						reproduce the entire works of Shakespeare. The Internet has proven this theory to be untrue.&rdquo;
-					</blockquote>
-				</section>
-
-				<section>
-					<h2>Intergalactic Interconnections</h2>
-					<p>
-						You can link between slides internally,
-						<a href="#/2/3">like this</a>.
-					</p>
-				</section>
-
-				<section>
-					<h2>Speaker View</h2>
-					<p>There's a <a href="https://revealjs.com/speaker-view/">speaker view</a>. It includes a timer, preview of the upcoming slide as well as your speaker notes.</p>
-					<p>Press the <em>S</em> key to try it out.</p>
-
-					<aside class="notes">
-						Oh hey, these are some notes. They'll be hidden in your presentation, but you can see them if you open the speaker notes window (hit 's' on your keyboard).
-					</aside>
-				</section>
-
-				<section>
-					<h2>Export to PDF.</h2>
-					<p>Presentations can be <a href="https://revealjs.com/pdf-export/">exported to PDF</a>, here's an example:</p>
-					<iframe data-src="https://www.canva.com/design/DAGVkySStsE/cFm6eZAMGJnxO-i/view?utm_content=DAGVkySStsE&utm_campaign=designshare&utm_medium=link&utm_source=editor" width="445" height="355" frameborder="0" marginwidth="0" marginheight="0" scrolling="no" style="border:3px solid #666; margin-bottom:5px; max-width: 100%;" allowfullscreen> </iframe>
-				</section>
-
-				<section>
-					<h2>Global State</h2>
-					<p>
-						Set <code>data-state="something"</code> on a slide and <code>"something"</code>
-						will be added as a class to the document element when the slide is open. This lets you
-						apply broader style changes, like switching the page background.
-					</p>
-				</section>
-
-				<section data-state="customevent">
-					<h2>State Events</h2>
-					<p>
-						Additionally custom events can be triggered on a per slide basis by binding to the <code>data-state</code> name.
-					</p>
-					<pre><code class="javascript" data-trim contenteditable style="font-size: 18px;">
-Reveal.on( 'customevent', function() {
-	console.log( '"customevent" has fired' );
-} );
-					</code></pre>
-				</section>
-
-				<section>
-					<h2>Take a Moment</h2>
-					<p>
-						Press B or . on your keyboard to pause the presentation. This is helpful when you're on stage and want to take distracting slides off the screen.
-					</p>
-				</section>
-
-				<section>
-					<h2>Much more</h2>
-					<ul>
-						<li>Right-to-left support</li>
-						<li><a href="https://revealjs.com/api/">Extensive JavaScript API</a></li>
-						<li><a href="https://revealjs.com/auto-slide/">Auto-progression</a></li>
-						<li><a href="https://revealjs.com/backgrounds/#parallax-background">Parallax backgrounds</a></li>
-						<li><a href="https://revealjs.com/keyboard/">Custom keyboard bindings</a></li>
-					</ul>
-				</section>
-
-				<section style="text-align: left;">
-					<h1>THE END</h1>
-					<p>
-						- <a href="https://slides.com">Try the online editor</a> <br>
-						- <a href="https://github.com/hakimel/reveal.js">Source code &amp; documentation</a>
-					</p>
-				</section>
 
 			</div>
 
