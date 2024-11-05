@@ -323,7 +323,7 @@
 				<section>
 					<h2>Price Watch</h2>
 					<p>Main loop</p>
-					<pre><code data-line-numbers="1-7|9-10|12-14|16-18" class="hljs" data-trim style="font-size: 0.9em;">
+					<pre><code data-line-numbers="1-7|9-10|12-14|16-18" class="hljs python" data-trim style="font-size: 0.9em;">
 
 						async def price_service(
 							price_source: PriceSource,
@@ -350,7 +350,84 @@
 
 				<section>
 					<h3>Code</h3>
-					<p class="fragment">Bot operator</p>
+					<p>Bot operator</p>
+				</section>
+
+				<section>
+					<h2>Bot operator</h2>
+					<p>Trading strategy - Strategy design pattern</p>
+
+					<pre><code data-line-numbers="1-4|6-10|12-16|19-24|26-27|29-36|37-44|47-49|50-54|56|59-66" class="hljs python" data-trim style="font-size: 0.7em;">
+						class TradingStrategy(ABC):
+							"""
+							A trading strategy is a class that generates orders based on events.
+							"""
+						
+							@abstractmethod
+							def generate_limit_orders(
+								self, arbitrage: Arbitrage, price: PriceMessage, amount_to_trade_usdt: float
+							) -> list[Order]:
+								pass
+						
+							@abstractmethod
+							def generate_market_orders(
+								self, arbitrage: Arbitrage, trade_message: TradeMessage
+							) -> list[Order]:
+								pass
+						
+						
+						class SimpleStrategy(TradingStrategy):
+							def generate_limit_orders(
+								self, arbitrage: Arbitrage, price: PriceMessage, amount_to_trade_usdt: float
+							) -> list[Order]:
+								ask_price = price.ask_price * (1.0 + arbitrage.markup())
+								bid_price = price.bid_price * (1.0 - arbitrage.markup())
+						
+								ask_quantity = amount_to_trade_usdt / ask_price
+								bid_quantity = amount_to_trade_usdt / bid_price
+								return [
+									Order(
+										symbol=arbitrage.target_market,
+										quantity=bid_quantity,
+										price=bid_price,
+										side="buy",
+										exchange=arbitrage.target_exchange,
+										order_type="limit",
+									),
+									Order(
+										symbol=arbitrage.target_market,
+										quantity=ask_quantity,
+										price=ask_price,
+										side="sell",
+										exchange=arbitrage.target_exchange,
+										order_type="limit",
+									),
+								]
+						
+							def generate_market_orders(
+								self, arbitrage: Arbitrage, trade_message: TradeMessage
+							) -> list[Order]:
+								if trade_message.symbol != arbitrage.target_market:
+									return []
+						
+								if trade_message.exchange != arbitrage.target_exchange:
+									return []
+						
+								oposite_side = "buy" if trade_message.side == "sell" else "sell"
+						
+								return [
+									Order(
+										symbol=arbitrage.origin_market,
+										quantity=trade_message.amount,
+										price=None,
+										side=oposite_side,
+										exchange=arbitrage.origin_exchange,
+										order_type="market",
+									)
+								]
+						
+
+	</code></pre>
 				</section>
 
 				<section>
