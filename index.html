@@ -353,6 +353,63 @@
 					<p>Bot operator</p>
 				</section>
 
+
+				<section>
+					<h2>Bot operator</h2>
+					<p>Event models</p>
+
+					<pre><code data-line-numbers="1-6|8-15|20-29|30-33|35-46" class="hljs python" data-trim style="font-size: 0.8em;">
+					class PriceMessage(BaseModel):
+						"""Price message from price-watch"""
+						symbol: str
+						ask_price: float
+						bid_price: float
+						datetime: datetime
+					
+					class TradeMessage(BaseModel):
+						"""Trade message from trade-watch"""
+						symbol: str
+						amount: float
+						price: float
+						exchange: str
+						side: str
+						datetime: datetime
+					
+						def subject(self) -> str:
+							return f"trade_updates_{self.exchange}"
+					
+					
+					class Order(BaseModel):
+						"""Orders sent to place-orders"""
+						symbol: str
+						quantity: float
+						price: Optional[float]
+						side: Literal["buy", "sell"]
+						exchange: str
+						order_type: Literal["market", "limit"]
+					
+						def subject(self) -> str:
+							# limit orders will be sent to order_updates_bitfinex
+							# market orders will be sent to order_updates_kraken
+							return f"order_updates_{self.exchange}"
+					
+					
+					class Arbitrage(BaseModel):
+						target_market: str # BTC/USDT
+						origin_market: str # BTC/USDT
+						target_exchange: str # bitfinex.com
+						origin_exchange: str # kraken.com
+						profit_threshold: float # 0.01%
+						target_fee: float # 0.1%
+						origin_fee: float # 0.2%
+					
+						def markup(self) -> float:
+							return self.profit_threshold + self.target_fee + self.origin_fee
+					
+					</code></pre>
+				</section>
+
+
 				<section>
 					<h2>Bot operator</h2>
 					<p>Trading strategy - Strategy design pattern</p>
@@ -430,6 +487,146 @@
 	</code></pre>
 				</section>
 
+
+				<section>
+					<h2>Bot operator</h2>
+					<p>Event observer - Observer design pattern</p>
+
+					<pre><code data-line-numbers="1-2|3-5|7-9|11-19|43|47-48|50-53|55-56|60-61|63|67-68|70-71|73-74|78-79|81|82-85|87-90" class="hljs python" data-trim style="font-size: 0.7em;">						
+						class EventObserver(ABC):
+							"""Abstract base class for different event observers"""
+							@abstractmethod
+							async def on_price_update(self, message: aio_pika.IncomingMessage):
+								pass
+						
+							@abstractmethod
+							async def on_trade_update(self, message: aio_pika.IncomingMessage):
+								pass
+						
+						
+						class ArbitrageObserver(EventObserver, BaseModel):
+							"""Arbitrage observer: listens to price and trade events and makes trading decisions"""
+							arbitrage: Arbitrage
+							strategy: TradingStrategy
+							channel: aio_pika.Channel | None = None
+							connection: aio_pika.Connection | None = None
+							amount_to_trade_usdt: float
+						
+							class Config:
+								arbitrary_types_allowed = True
+						
+							async def connect(self, rabbitmq_url: str):
+								self.connection = await aio_pika.connect_robust(rabbitmq_url)
+								self.channel = await self.connection.channel()
+						
+							def target_exchange(self) -> str:
+								return self.arbitrage.target_exchange
+						
+							def origin_exchange(self) -> str:
+								return self.arbitrage.origin_exchange
+						
+							async def _publish_order(self, order: Order):
+								if not self.channel:
+									raise RuntimeError("Channel not initialized")
+								subject = order.subject()
+								await self.channel.default_exchange.publish(
+									aio_pika.Message(body=order.model_dump_json().encode()),
+									routing_key=subject,
+								)
+								logger.info("New decision to %s: %s", subject, order)
+						
+							async def on_price_update(self, message: aio_pika.IncomingMessage):
+								try:
+									logger.info("Received price update from %s", message.routing_key)
+
+									# Convert the RabbitMQ message into a PriceMessage
+									price = PriceMessage(**json.loads(message.body))
+
+									# Generate limit orders based on the price update
+									orders = self.strategy.generate_limit_orders(
+										self.arbitrage, price, self.amount_to_trade_usdt
+									)
+						
+									for order in orders:
+										await self._publish_order(order)
+								except Exception as e:
+									logger.error("Error processing price update: %s", e)
+						
+								finally:
+									await message.ack()
+						
+							async def on_trade_update(self, message: aio_pika.IncomingMessage):
+								try:
+									logger.info("Received trade update from %s", message.routing_key)
+
+									# Convert the RabbitMQ message into a TradeMessage
+									trade_message = TradeMessage(**json.loads(message.body))
+
+									# Generate market orders based on the trade update
+									orders = self.strategy.generate_market_orders(self.arbitrage, trade_message)
+						
+									for order in orders:
+										await self._publish_order(order)
+								except Exception as e:
+									logger.error("Error processing trade update: %s", e)
+						
+								finally:
+									await message.ack()
+						
+							async def subscribe(self):
+								# Consume price updates from the origin exchange (kraken)
+								price_subject = f"price_updates_{self.arbitrage.origin_exchange}"
+								price_queue = await self.channel.declare_queue(price_subject)
+								await price_queue.consume(self.on_price_update)
+						
+								# Consume trade updates from the target exchange (bitfinex)
+								trade_subject = f"trade_updates_{self.arbitrage.target_exchange}"
+								trade_queue = await self.channel.declare_queue(trade_subject)
+								await trade_queue.consume(self.on_trade_update)
+
+								await asyncio.Future()
+
+								#
+						
+					</code></pre>
+				</section>
+
+				<section>
+					<h3>Bot operator</h3>
+					<p>Main loop</p>
+					<pre><code data-line-numbers="1-25|1-2|4-12|14-18|19|20" class="hljs python" data-trim data-noescape>
+					async def operator_service():
+						"""Bot operator service"""
+
+						arbitrage = Arbitrage(
+							target_market="BTC/USDT",
+							origin_market="BTC/USDT",
+							target_exchange="bitfinex",
+							origin_exchange="kraken",
+							profit_threshold=0.05,
+							target_fee=0.002,
+							origin_fee=0.001,
+						)
+					
+						observer = ArbitrageObserver(
+							arbitrage=arbitrage,
+							strategy=SimpleStrategy(),
+							amount_to_trade_usdt=15.0,
+						)
+						await observer.connect("amqp://guest:guest@rabbitmq/")
+						await observer.subscribe()
+					
+					
+					if __name__ == "__main__":
+						asyncio.run(operator_service())
+					
+</code></pre>
+				</section>
+
+				<section>
+					<h3>Demo</h3>
+				</section>
+
 				<section>
 					<h2>Thanks! The END</h2>
 					<div style="display: flex; justify-content: center; gap: 8rem;">
@@ -439,7 +636,7 @@
 						</div>
 						<div style="text-align: center;">
 							<img src="https://adolfovillalobos.imgix.net/blog/QR%20GitHub%20500x500.png" alt="GitHub QR code" style="height: 180px; background: transparent;" class="demo-logo">
-							<p><small>GitHub</small></p>
+							<p><small>GitHub Repo</small></p>
 						</div>
 					</div>
 				</section>
