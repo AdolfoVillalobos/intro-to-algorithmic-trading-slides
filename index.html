@@ -40,11 +40,12 @@
 
 				<section id="fragments">
 					<h2>About me!</h2>
-					<p>I'm a Quantitative Developer/Software Engineer at <a href="https://www.orionx.com">OrionX</a>.</p>
-					<p class="fragment">Lead developer: Trading Systems, Data Platforms & Quantitative Research.</p>
-					<p class="fragment">I'm also a Python, Open Source and Machine Learning enthusiast.</p>
-					<p class="fragment">I have a <a>B.Sc. in Applied Maths</a> and a <a>M.Sc. in Engineering (Data Science)</a>.</p>
+					<p>I'm a Quantitative Developer/Software Engineer from Chile</p>
+					<p class="fragment">I work at <a href="https://www.orionx.com">OrionX.com</a>, a crypto exchange.</p>
+					<p class="fragment">Lead developer: Automated Trading Systems, Data Platforms & Quantitative Research.</p>
 					<p class="fragment">6+ years of experience in quant/technology roles.</p>
+					<p class="fragment">I'm also a Python, Open Source and Machine Learning enthusiast.</p>
+					<p class="fragment"><a>B.Sc. in Applied Maths</a> and a <a>M.Sc. in Engineering (Data Science)</a> (PUC, Chile).</p>
 
 					<aside class="notes">
 						This slide has fragments which are also stepped through in the notes window.
@@ -53,7 +54,7 @@
 
 				<section id="fragments">
 					<h2>This talk is <a>NOT</a> about!</h2>
-					<p>Machine Learning/AI</p>
+					<p class="fragment">Machine Learning/AI</p>
 					<p class="fragment">Finance Theory</p>
 					<p class="fragment">Blockchains</p>
 					<p class="fragment">Financial Advice. Be careful!</p>
@@ -63,11 +64,21 @@
 				<section>
 					<h2>Agenda</h2>
 					<ul>
+						<li>Why Python?</li>
 						<li>Strategy</li>
 						<li>Design</li>
 						<li>Demo</li>
 						<li>Miscellaneous</li>
 					</ul>
+				</section>
+
+				<section>
+					<h3>Why Python?</h3>
+					<p class="fragment">Flexible and easy to prototype</p>
+					<p class="fragment">High quality open source libraries: FastAPI, Pydantic, Pytorch, Numpy, Pandas, etc</p>
+					<p class="fragment">Fast enough. Getting faster.</p>
+					<p class="fragment">Generative AI getting better at Python</p>
+					<p class="fragment">Fun!</p>
 				</section>
 
 				<section>
@@ -181,15 +192,32 @@
         break</code></pre>
 				</section>
 
-				<section data-background="http://i.giphy.com/90F8aUepslB84.gif">
-					<h2>... you SELL!</h2>
-				</section>
 
 				<section>
-					<h3>Design</h3>
-					<p class="fragment">Event Driven Architecture</p>
+					<h2>Design</h2>
+					<h3>We need to:</h3>
+
+					<p class="fragment">Listen to price updates</p>
+					<p class="fragment">Listen to trade updates</p>
+					<p class="fragment">Make trading decisions based on events</p>
+					<p class="fragment">Execute orders</p>
+				</section>
+
+
+
+				<section>
+					<h2>Design</h2>
 					<p class="fragment">Flow 1: Price Events</p>
 					<p class="fragment">Flow 2: Trade Events</p>
+				</section>
+
+
+				<section>
+					<h2>Main idea</h2>
+					<p class="fragment">price-watch generates price updates</p>
+					<p class="fragment">trade-watch generates trade updates</p>
+					<p class="fragment">bot-operator makes trading decisions and sends orders based on events</p>
+					<p class="fragment">place-orders executes orders</p>
 				</section>
 
 				<section>
@@ -208,40 +236,42 @@
 
 
 				<section>
-					<h3>Design</h3>
-					<p class="fragment">Repo</p>
+					<h2>Soo...</h2>
+					<p class="fragment">price-watch generates price updates</p>
+					<p class="fragment">trade-watch generates trade updates</p>
+					<p class="fragment">bot-operator makes trading decisions and sends orders based on events</p>
+					<p class="fragment">place-orders executes orders</p>
+				</section>
+
+
+				<section>
+					<h2>Design</h2>
+					<p>Repo structure</p>
 				</section>
 
 				<section>
-					<div style="display: flex; justify-content: space-between; align-items: center;">
-						<div style="flex: 1;">
-							<img src="https://adolfovillalobos.imgix.net/blog/algo-trading-repo-structure.png" alt="Flow 1" style="width: 100%; object-fit: contain; background: transparent;" class="demo-logo">
-						</div>
-						<div style="flex: 1; padding-left: 1rem; max-width: 80%; font-size: 0.7em;">
-							<ul style="margin: 0; padding: 0 0 0 1.5em;">
-								<li class="fragment">Microservices (mono-repo)</li>
-								<li class="fragment"><a>price-watch</a>: price events</li>
-								<li class="fragment"><a>trade-watch</a>: trade events</li>
-								<li class="fragment"><a>place-orders</a>: execute limit/market orders</li>
-								<li class="fragment"><a>bot-operator</a>: implement strategy</li>
-								<li class="fragment"><a>.github/workflows</a>: CI/CD, testing, etc.</li>
-								<li class="fragment"><a>docker-compose.dev.yml</a>: containerize</li>
-								<li class="fragment"><a>Makefile</a>: useful commands</li>
-							</ul>
-						</div>
-					</div>
+					<img src="https://adolfovillalobos.imgix.net/blog/algo-trading-repo-structure.png" alt="Flow 1" style="width: 100%; object-fit: contain; background: transparent;" class="demo-logo">
 				</section>
 
 				<section>
 					<h3>Code</h3>
-					<p class="fragment">Price Watch</p>
+					<p>Price Watch</p>
 				</section>
 
 				<section>
 					<h2>Price Watch</h2>
 					<p>Price source - Strategy design pattern</p>
 
-					<pre><code data-line-numbers="1-2|4-6|8-14|19-25|26-28|29-32" class="hljs" data-trim style="font-size: 0.7em;">
+					<pre><code data-line-numbers="1-14|16-22|27|31-32|34-35|37-40" class="hljs" data-trim style="font-size: 0.7em;">
+
+					class PriceMessage(BaseModel):
+						"""Price message from price-watch"""
+						symbol: str
+						ask_price: float
+						bid_price: float
+						datetime: datetime
+						exchange: str
+					
 					class PriceSource(BaseModel, ABC):
 						"""Abstract base class for different price data sources"""
 					
