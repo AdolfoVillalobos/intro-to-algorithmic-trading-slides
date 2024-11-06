@@ -58,7 +58,7 @@
 					<p class="fragment">Machine Learning/AI</p>
 					<p class="fragment">Finance Theory</p>
 					<p class="fragment">Blockchains</p>
-					<p class="fragment">Financial Advice. Be careful!</p>
+					<p class="fragment"><a>NOT</a> Financial Advice. Be careful!</p>
 
 				</section>
 
@@ -69,7 +69,7 @@
 						<li>Strategy</li>
 						<li>Design</li>
 						<li>Demo</li>
-						<li>Miscellaneous</li>
+						<li>Other</li>
 					</ul>
 				</section>
 
@@ -113,9 +113,8 @@
 
 				<section id="fragments">
 					<h2>Then you</h2>
-					<p>Wait...</p>
-					<p class="fragment">Run ads</p>
-					<p class="fragment">Look for other products</p>
+					<p class="fragment">Wait for a purchase</p>
+					<p class="fragment">Run ads (Tik-tok, Facebook, etc)</p>
 					<p class="fragment">And then...</p>
 				</section>
 				<section data-background="http://i.giphy.com/90F8aUepslB84.gif">
@@ -179,7 +178,7 @@
 
 				<section id="algorithm">
 					<h2>Pseudo-code</h2>
-					<pre class="fragment"><code data-line-numbers="1|2-3|5-6|8-12|15-18|19-25" class="hljs" data-trim>while true:
+					<pre class="fragment"><code data-line-numbers="1|2-3|5-6|8-12|13-14|15-19" class="hljs" data-trim>while true:
     // Sample prices from Kraken
     btc_price_kraken = get_btc_price("kraken.com")
     
@@ -191,16 +190,13 @@
         place_limit_order("bitfinex.com", 
             price=target_price,
             side="sell")
-            
-    // Compete in orderbook
-    competitor_orders = get_orderbook("bitfinex.com")
-    if better_price_exists(competitor_orders, target_price):
-        update_order_price(target_price - small_adjustment)
+		else:
+			update_order_price(target_price - small_adjustment)
         
     // Check if order filled
     if order_filled:
         execute_arbitrage() // Trade against kraken.com
-        break</code></pre>
+        </code></pre>
 				</section>
 
 
