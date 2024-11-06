@@ -133,6 +133,16 @@
 					<h2>... $100 profit!</h2>
 				</section>
 
+				<section>
+					<h2>Soo...Summary</h2>
+					<p class="fragment">Copy product from Alibaba to our Shopify store</p>
+					<p class="fragment">Add a markup and sell the product on our store</p>
+					<p class="fragment">Wait for customer to buy</p>
+					<p class="fragment">If customer buys, we buy from our supplier in Alibaba</p>
+					<p class="fragment">We make $100 profit!</p>
+					<p class="fragment">Repeat!</p>
+				</section>
+
 
 				<section>
 					<h3>Strategy</h3>
@@ -193,31 +203,17 @@
 				</section>
 
 
-				<section>
-					<h2>Design</h2>
-					<h3>We need to:</h3>
-
-					<p class="fragment">Listen to price updates</p>
-					<p class="fragment">Listen to trade updates</p>
-					<p class="fragment">Make trading decisions based on events</p>
-					<p class="fragment">Execute orders</p>
-				</section>
-
-
 
 				<section>
 					<h2>Design</h2>
-					<p class="fragment">Flow 1: Price Events</p>
-					<p class="fragment">Flow 2: Trade Events</p>
-				</section>
+					<p>4 Microservices:</p>
+					<ul>
 
-
-				<section>
-					<h2>Main idea</h2>
-					<p class="fragment">price-watch generates price updates</p>
-					<p class="fragment">trade-watch generates trade updates</p>
-					<p class="fragment">bot-operator makes trading decisions and sends orders based on events</p>
-					<p class="fragment">place-orders executes orders</p>
+						<li class="fragment">price-watch: publishes price updates</li>
+						<li class="fragment">trade-watch: publishes trade updates</li>
+						<li class="fragment">bot-operator: makes trading decisions and sends orders based on events</li>
+						<li class="fragment">place-orders: executes orders (decisions)</li>
+					</ul>
 				</section>
 
 				<section>
@@ -235,17 +231,10 @@
 				</section>
 
 
-				<section>
-					<h2>Soo...</h2>
-					<p class="fragment">price-watch generates price updates</p>
-					<p class="fragment">trade-watch generates trade updates</p>
-					<p class="fragment">bot-operator makes trading decisions and sends orders based on events</p>
-					<p class="fragment">place-orders executes orders</p>
-				</section>
 
 
 				<section>
-					<h2>Design</h2>
+					<h2>Code</h2>
 					<p>Repo structure</p>
 				</section>
 
@@ -255,99 +244,145 @@
 
 				<section>
 					<h3>Code</h3>
-					<p>Price Watch</p>
+					<p>price-watch service</p>
 				</section>
 
 				<section>
 					<h2>Price Watch</h2>
-					<p>Price source - Strategy design pattern</p>
+					<div style="display: flex; justify-content: space-between; gap: 1rem; max-width: 100%; overflow: hidden;">
+						<!-- Code Column -->
+						<div style="flex: 1; min-width: 0;">
+							<pre><code data-line-numbers="1-15" class="hljs" data-trim style="font-size: 0.7em;">
 
-					<pre><code data-line-numbers="1-14|16-22|27|31-32|34-35|37-40" class="hljs" data-trim style="font-size: 0.7em;">
+							from pydantic import BaseModel
 
-					class PriceMessage(BaseModel):
-						"""Price message from price-watch"""
-						symbol: str
-						ask_price: float
-						bid_price: float
-						datetime: datetime
-						exchange: str
-					
-					class PriceSource(BaseModel, ABC):
-						"""Abstract base class for different price data sources"""
-					
-						@abstractmethod
-						async def watch_prices(self, symbol: str) -> AsyncIterator[PriceMessage]:
-							pass
+							class PriceMessage(BaseModel):
+								"""Price message from price-watch"""
+								symbol: str
+								ask_price: float
+								bid_price: float
+								datetime: datetime
+								exchange: str
+							
+							</code></pre>
+						</div>
 
-					import ccxt.pro as ccxt
-
-					class CCXTPriceSource(PriceSource):
-						"""Generate prices from a CCXT client"""
-					
-						exchange: ccxt.Exchange
-						exchange_name: str
-					
-						class Config:
-							arbitrary_types_allowed = True
-					
-						async def watch_prices(self, symbol: str) -> AsyncIterator[PriceMessage]:
-							last_message = None
-							while True:
-								try:
-									// Get the orderbook from the exchange
-									orderbook = await self.exchange.watch_order_book(symbol)
-
-									// Convert into a PriceMessage
-									new_message = PriceMessage.from_orderbook(orderbook, self.exchange_name)
-					
-									// Yield the new price if it has changeds
-									if last_message is None or last_message.has_changed(new_message):
-										last_message = new_message
-										yield new_message
-								except Exception as e:
-									logger.error(f"Error watching {symbol}: {e}")
-								finally:
-									await asyncio.sleep(2)
-	</code></pre>
+						<!-- Text Column -->
+						<div style="flex: 1; min-width: 0; padding-left: 1rem;">
+							<ul style="font-size: 0.8em; margin: 0;">
+								<li>PriceMessage is a Pydantic model that represents price updates</li>
+								<li>Contains essential price information like symbol, ask/bid prices</li>
+								<li>Used for standardized message passing between services</li>
+							</ul>
+						</div>
+					</div>
 				</section>
-
+				<section>
+					<h3>Price Source Strategy</h3>
+					<div style="display: flex; justify-content: space-between; gap: 1rem; height: 80vh;">
+						<!-- Code Column -->
+						<div style="flex: 2.5; max-height: 100%; overflow-y: auto;">
+							<pre><code data-line-numbers="1-6|8-14|19-32" class="hljs" data-trim style="font-size: 0.6em;">
+								class PriceSource(BaseModel, ABC):
+									"""Abstract base class for different price data sources"""
+								
+									@abstractmethod
+									async def watch_prices(self, symbol: str) -> AsyncIterator[PriceMessage]:
+										pass
+				
+								import ccxt.pro as ccxt
+				
+								class CCXTPriceSource(PriceSource):
+									"""Generate prices from a CCXT client"""
+								
+									exchange: ccxt.Exchange
+									exchange_name: str
+								
+									class Config:
+										arbitrary_types_allowed = True
+								
+									async def watch_prices(self, symbol: str) -> AsyncIterator[PriceMessage]:
+										last_message = None
+										while True:
+											try:
+												// Get the orderbook from the exchange
+												orderbook = await self.exchange.watch_order_book(symbol)
+				
+												// Convert into a PriceMessage
+												new_message = PriceMessage.from_orderbook(orderbook, self.exchange_name)
+								
+												// Yield the new price if it has changed
+												if last_message is None or last_message.has_changed(new_message):
+													last_message = new_message
+													yield new_message
+											except Exception as e:
+												logger.error(f"Error watching {symbol}: {e}")
+											finally:
+												await asyncio.sleep(2)
+							</code></pre>
+						</div>
+				
+						<!-- Text Column -->
+						<div style="flex: 1; padding: 0.5rem; display: flex; flex-direction: row; justify-content: center; font-size: 0.5em; overflow-y: auto;">
+							<ul>
+								<li>The PriceSource class implements the Strategy pattern to abstract different price data sources.</li>
+								<li>CCXTPriceSource uses the CCXT library to connect to various cryptocurrency exchanges.</li>
+								<li>It continuously watches the orderbook and yields new price messages when changes occur.</li>
+							</ul>
+						</div>
+					</div>
+				</section>
 				<section>
 					<h2>Price Watch</h2>
-					<p>RabbitMQ Message queue - Pub/Sub pattern</p>
-					<pre><code data-line-numbers="1-5|10-12|14-22|25-28|30-32" class="hljs" data-trim style="font-size: 0.7em;">
-						import aio_pika
+					<div style="display: flex; flex-direction: row;">
+						<!-- Code Column -->
+							<div style="flex: 2.5; max-height: 100%; overflow-y: auto;">
+							<pre><code data-line-numbers="1-5|10-22" class="hljs" data-trim style="font-size: 0.7em;">
+								import aio_pika
 
-						class MessageQueuePublisher(BaseModel):
-							channel: Optional[aio_pika.Channel] = None
-							connection: Optional[aio_pika.Connection] = None
-					
-							class Config:
-								arbitrary_types_allowed = True
-						
-							async def connect(self, rabbitmq_url: str):
-								self.connection = await aio_pika.connect_robust(rabbitmq_url)
-								self.channel = await self.connection.channel()
-						
-							async def publish(self, message: PriceMessage):
+								class MessageQueuePublisher(BaseModel):
+									channel: Optional[aio_pika.Channel] = None
+									connection: Optional[aio_pika.Connection] = None
+							
+									class Config:
+										arbitrary_types_allowed = True
 
-								if self.channel is None:
-									self.channel = await self.connection.channel()
+									async def publish(self, message: PriceMessage):
 
-								logger.info("Publishing price message to %s: %s", message.subject(), message)
+										if self.channel is None:
+											self.channel = await self.connection.channel()
 
-								// Convert out price into a RabbitMQ message
-								amqp_message = aio_pika.Message(body=message.model_dump_json().encode())
+										// Convert out price into a RabbitMQ message
+										amqp_message = aio_pika.Message(body=message.model_dump_json().encode())
 
-								// Publish the message to the Price subject
-								await self.channel.default_exchange.publish(
-									amqp_message,
-									routing_key=message.subject(), // i.e price_updates_kraken
-								)
-					
-							async def close(self):
-								if self.connection:
-									await self.connection.close()
-				</code></pre>
+										// Publish the message to the Price subject
+										await self.channel.default_exchange.publish(
+											amqp_message,
+											routing_key=message.subject(), // i.e price_updates_kraken
+										)							
+
+									async def connect(self, rabbitmq_url: str):
+										self.connection = await aio_pika.connect_robust(rabbitmq_url)
+										self.channel = await self.connection.channel()
+								
+							
+									async def close(self):
+										if self.connection:
+											await self.connection.close()
+							</code></pre>
+						</div>
+
+						<!-- Text Column -->
+						<div style="flex: 1; padding: 0.5rem; display: flex; flex-direction: row; justify-content: center; font-size: 0.5em; overflow-y: auto;">
+							<ul>
+								<li>MessageQueuePublisher handles publishing price updates to RabbitMQ</li>
+								<li>Uses aio_pika library for async communication with RabbitMQ</li>
+								<li>Maintains a robust connection that automatically reconnects</li>
+								<li>Converts PriceMessage objects to JSON before publishing</li>
+								<li>Publishes to a price subject, which can be consumed by multiple observers</li>
+							</ul>
+						</div>
+					</div>
 				</section>
 
 				<section>
@@ -380,21 +415,25 @@
 
 				<section>
 					<h3>Code</h3>
-					<p>Bot operator</p>
+					<p>bot-operator service</p>
 				</section>
-
 
 				<section>
 					<h2>Bot operator</h2>
 					<p>Event models</p>
-
-					<pre><code data-line-numbers="1-6|8-15|20-29|30-33|35-46" class="hljs python" data-trim style="font-size: 0.8em;">
+					
+					<div style="display: flex; flex-direction: row;">
+						<!-- Code Column -->
+						<div style="flex: 2; max-height: 100%; overflow-y: auto;">
+							<pre><code data-line-numbers="1-7|9-17|21-30|38-48" class="hljs python" data-trim style="font-size: 0.8em;">
 					class PriceMessage(BaseModel):
 						"""Price message from price-watch"""
 						symbol: str
 						ask_price: float
 						bid_price: float
 						datetime: datetime
+						exchange: str
+
 					
 					class TradeMessage(BaseModel):
 						"""Trade message from trade-watch"""
@@ -435,8 +474,21 @@
 					
 						def markup(self) -> float:
 							return self.profit_threshold + self.target_fee + self.origin_fee
-					
-					</code></pre>
+							</code></pre>
+						</div>
+
+						<!-- Text Column -->
+						<div style="flex: 1; padding: 0.5rem; display: flex; flex-direction: row; justify-content: center; font-size: 0.5em; overflow-y: auto;">
+							<ul>
+								<li>PriceMessage</li>
+								<li>TradeMessage</li>
+								<li>Order</li>
+								<li>Arbitrage</li>
+								<li>All models inherit from Pydantic BaseModel for validation</li>
+								<li>Custom subject() methods define message routing patterns</li>
+							</ul>
+						</div>
+					</div>
 				</section>
 
 
@@ -444,11 +496,12 @@
 					<h2>Bot operator</h2>
 					<p>Trading strategy - Strategy design pattern</p>
 
-					<pre><code data-line-numbers="1-4|6-10|12-16|19-24|26-27|29-36|37-44|47-49|50-54|56|59-66" class="hljs python" data-trim style="font-size: 0.7em;">
+					<div style="display: flex; flex-direction: row;">
+						<!-- Code Column -->
+						<div style="flex: 2; max-height: 100%; overflow-y: auto;">
+							<pre><code data-line-numbers="1-3|4-8|10-14|17-25|27-35|37-57" class="hljs python" data-trim style="font-size: 0.7em;">
 						class TradingStrategy(ABC):
-							"""
-							A trading strategy is a class that generates orders based on events.
-							"""
+							"""A trading strategy is a class that generates orders based on events."""
 						
 							@abstractmethod
 							def generate_limit_orders(
@@ -464,23 +517,16 @@
 						
 						
 						class SimpleStrategy(TradingStrategy):
+							"""Simple strategy: cost+profit"""
+
 							def generate_limit_orders(
 								self, arbitrage: Arbitrage, price: PriceMessage, amount_to_trade_usdt: float
 							) -> list[Order]:
+
 								ask_price = price.ask_price * (1.0 + arbitrage.markup())
-								bid_price = price.bid_price * (1.0 - arbitrage.markup())
-						
 								ask_quantity = amount_to_trade_usdt / ask_price
-								bid_quantity = amount_to_trade_usdt / bid_price
+
 								return [
-									Order(
-										symbol=arbitrage.target_market,
-										quantity=bid_quantity,
-										price=bid_price,
-										side="buy",
-										exchange=arbitrage.target_exchange,
-										order_type="limit",
-									),
 									Order(
 										symbol=arbitrage.target_market,
 										quantity=ask_quantity,
@@ -511,10 +557,20 @@
 										exchange=arbitrage.origin_exchange,
 										order_type="market",
 									)
-								]
-						
+								]</code></pre>
+						</div>
 
-	</code></pre>
+						<!-- Text Column -->
+						<div style="flex: 1; padding: 0.5rem; display: flex; flex-direction: row; justify-content: center; font-size: 0.5em; overflow-y: auto;">
+							<ul>
+								<li>Abstract TradingStrategy class defines interface</li>
+								<li>SimpleStrategy implements concrete strategy</li>
+								<li>generate_limit_orders creates sell limit orders</li>
+								<li>generate_market_orders creates opposite side orders to complete the arbitrage</li>
+								<li>Uses Strategy pattern for flexible trading logic</li>
+							</ul>
+						</div>
+					</div>
 				</section>
 
 
@@ -522,9 +578,10 @@
 					<h2>Bot operator</h2>
 					<p>Event observer - Observer design pattern</p>
 
-					<pre><code data-line-numbers="1-2|3-5|7-9|11-19|43|47-48|50-53|55-56|60-61|63|67-68|70-71|73-74|78-79|81|82-85|87-90" class="hljs python" data-trim style="font-size: 0.7em;">						
+					<pre><code data-line-numbers="1-2|4-6|8-10|11-19|35-48|53-66|69-78" class="hljs python" data-trim style="font-size: 0.7em;">						
 						class EventObserver(ABC):
 							"""Abstract base class for different event observers"""
+						
 							@abstractmethod
 							async def on_price_update(self, message: aio_pika.IncomingMessage):
 								pass
@@ -544,16 +601,7 @@
 						
 							class Config:
 								arbitrary_types_allowed = True
-						
-							async def connect(self, rabbitmq_url: str):
-								self.connection = await aio_pika.connect_robust(rabbitmq_url)
-								self.channel = await self.connection.channel()
-						
-							def target_exchange(self) -> str:
-								return self.arbitrage.target_exchange
-						
-							def origin_exchange(self) -> str:
-								return self.arbitrage.origin_exchange
+
 						
 							async def _publish_order(self, order: Order):
 								if not self.channel:
@@ -567,8 +615,6 @@
 						
 							async def on_price_update(self, message: aio_pika.IncomingMessage):
 								try:
-									logger.info("Received price update from %s", message.routing_key)
-
 									# Convert the RabbitMQ message into a PriceMessage
 									price = PriceMessage(**json.loads(message.body))
 
@@ -587,8 +633,6 @@
 						
 							async def on_trade_update(self, message: aio_pika.IncomingMessage):
 								try:
-									logger.info("Received trade update from %s", message.routing_key)
-
 									# Convert the RabbitMQ message into a TradeMessage
 									trade_message = TradeMessage(**json.loads(message.body))
 
@@ -615,6 +659,16 @@
 								await trade_queue.consume(self.on_trade_update)
 
 								await asyncio.Future()
+						
+							async def connect(self, rabbitmq_url: str):
+								self.connection = await aio_pika.connect_robust(rabbitmq_url)
+								self.channel = await self.connection.channel()
+						
+							def target_exchange(self) -> str:
+								return self.arbitrage.target_exchange
+						
+							def origin_exchange(self) -> str:
+								return self.arbitrage.origin_exchange
 
 								#
 						
@@ -624,7 +678,7 @@
 				<section>
 					<h3>Bot operator</h3>
 					<p>Main loop</p>
-					<pre><code data-line-numbers="1-25|1-2|4-12|14-18|19|20" class="hljs python" data-trim data-noescape>
+					<pre><code data-line-numbers="1-12|13-19" class="hljs python" data-trim data-noescape>
 					async def operator_service():
 						"""Bot operator service"""
 
@@ -637,7 +691,6 @@
 							target_fee=0.002,
 							origin_fee=0.001,
 						)
-					
 						observer = ArbitrageObserver(
 							arbitrage=arbitrage,
 							strategy=SimpleStrategy(),
